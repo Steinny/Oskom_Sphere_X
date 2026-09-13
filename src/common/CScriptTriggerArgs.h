@@ -33,6 +33,7 @@ public:
     CVarDefMap 				m_VarsLocal;    // "LOCAL.x" = local variable x
     CLocalFloatVars			m_VarsFloat;    // "FLOAT.x" = float local variable x
     CLocalObjMap			m_VarObjs;      // "REFx" = local object x
+    CVarDefMap				m_VarsPLocal;   // "PLOCAL.x" = named local object reference x, stored as its UID
 
 public:
     CScriptTriggerArgs() noexcept;

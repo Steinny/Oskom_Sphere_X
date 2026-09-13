@@ -43,6 +43,9 @@ void CScriptTriggerArgs::Clear()
 
     // Clear REFx
     m_VarObjs.Clear();
+
+    // Clear PLOCALs
+    m_VarsPLocal.Clear();
 }
 
 void CScriptTriggerArgs::Init( lpctstr pszStr )
@@ -158,6 +161,29 @@ void CScriptTriggerArgs::GetArgNs(int64* iVar1, int64* iVar2, int64* iVar3) //Pu
         *iVar3 = m_iN3;
 }
 
+// Longest accepted PLOCAL variable name. Names are written by hand in scripts,
+// so this is generous; an overlong one simply isn't treated as a reference.
+static constexpr size_t kuiPLocalNameMaxLen = 256;
+
+// Extract the <name> part of a "PLOCAL.<name>[.<key>]" key, which the caller has
+// already advanced past the "PLOCAL." prefix.
+// Returns the character that terminated the name ('.' when a member is being
+// accessed), or nullptr if the name is empty or too long to be one.
+static lpctstr PLocal_ParseName( lpctstr ptcKey, tchar * ptcNameOut ) noexcept
+{
+    lpctstr ptcEnd = ptcKey;
+    while ( *ptcEnd && (*ptcEnd != '.') && (*ptcEnd != '=') && !IsSpace(*ptcEnd) )
+        ++ptcEnd;
+
+    const size_t uiLen = (size_t)(ptcEnd - ptcKey);
+    if ( (uiLen == 0) || (uiLen >= kuiPLocalNameMaxLen) )
+        return nullptr;
+
+    memcpy(ptcNameOut, ptcKey, uiLen);
+    ptcNameOut[uiLen] = '\0';
+    return ptcEnd;
+}
+
 bool CScriptTriggerArgs::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 {
     ADDTOCALLSTACK("CScriptTriggerArgs::r_GetRef");
@@ -189,6 +215,30 @@ bool CScriptTriggerArgs::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 
                     pRef = m_VarObjs.Get( number );
                     ptcKey = pszTemp;
+                    return true;
+                }
+            }
+        }
+    }
+    else if ( !strnicmp(ptcKey, "PLOCAL.", 7) )     // PLOCAL.NAME.KEY
+    {
+        tchar ptcName[kuiPLocalNameMaxLen];
+        lpctstr ptcEnd = PLocal_ParseName(ptcKey + 7, ptcName);
+
+        // Only a dereference (PLOCAL.NAME.KEY) yields a reference. A bare
+        // PLOCAL.NAME is the stored UID itself, handled by r_WriteVal.
+        if ( ptcEnd && (*ptcEnd == '.') )
+        {
+            const CVarDefCont * pVarDef = m_VarsPLocal.GetKey( ptcName );
+            if ( pVarDef )
+            {
+                // The UID is resolved on every access, so a PLOCAL pointing at a
+                // deleted object reads back as "0" instead of dangling.
+                CObjBase * pObj = CUID::ObjFindFromUID( (dword)pVarDef->GetValNum() );
+                if ( pObj )
+                {
+                    ptcKey = ptcEnd + 1;
+                    pRef = pObj;
                     return true;
                 }
             }
@@ -248,6 +298,35 @@ bool CScriptTriggerArgs::r_Verb( CScript & s, CTextConsole * pSrc )
         m_VarsLocal.SetStr( s.GetKey() + 6, fQuoted, ptcArg, false); // don't change fZero to true! it would break some scripts!
         return true;
 
+    }
+    else if ( !strnicmp( "PLOCAL.", ptcKey, 7 ) )
+    {
+        tchar ptcName[kuiPLocalNameMaxLen];
+        lpctstr ptcEnd = PLocal_ParseName(ptcKey + 7, ptcName);
+        if ( ptcEnd )
+        {
+            if ( !*ptcEnd || (*ptcEnd == '=') )     // setting PLOCAL.NAME to an object
+            {
+                // Stored as a plain UID, not as a pointer.
+                m_VarsPLocal.SetNum( ptcName, s.GetArgVal() );
+                return true;
+            }
+            else if ( *ptcEnd == '.' )              // accessing PLOCAL.NAME's object
+            {
+                const CVarDefCont * pVarDef = m_VarsPLocal.GetKey( ptcName );
+                CObjBase * pObj = pVarDef ? CUID::ObjFindFromUID( (dword)pVarDef->GetValNum() ) : nullptr;
+                if ( !pObj )
+                {
+                    if (s._eParseFlags == CScript::ParseFlags::IgnoreInvalidRef)
+                        return true;
+                    return ParseError_UndefinedKeyword(s.GetKey());
+                }
+
+                CScript script( ptcEnd + 1, s.GetArgStr());
+                script.CopyParseState(s);
+                return pObj->r_Verb( script, pSrc );
+            }
+        }
     }
     else if ( !strnicmp( "REF", ptcKey, 3 ) )
     {
@@ -396,6 +475,28 @@ bool CScriptTriggerArgs::r_WriteVal( lpctstr ptcKey, CSString &sVal, CTextConsol
         EXC_SET_BLOCK("local");
         ptcKey	+= 6;
         sVal = m_VarsLocal.GetKeyStr(ptcKey, true);
+        return true;
+    }
+
+    if ( !strnicmp( "PLOCAL.", ptcKey, 7 ) )
+    {
+        EXC_SET_BLOCK("plocal");
+        CScriptObj * pRef;
+        if ( r_GetRef( ptcKey, pRef ) )
+        {
+            if ( pRef == nullptr )
+            {
+                sVal = "0";     // bad refs always read back as "0"
+                return true;
+            }
+            return pRef->r_WriteVal( ptcKey, sVal, pSrc );
+        }
+
+        // Not a live dereference: give back whatever is stored, which for a
+        // bare PLOCAL.NAME is the UID. An unset name reads back as an empty
+        // string (not "0"), matching how 0.55 behaved here.
+        ptcKey += 7;
+        sVal = m_VarsPLocal.GetKeyStr( ptcKey );
         return true;
     }
 
