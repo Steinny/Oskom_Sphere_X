@@ -232,8 +232,10 @@ bool CScriptTriggerArgs::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
             const CVarDefCont * pVarDef = m_VarsPLocal.GetKey( ptcName );
             if ( pVarDef )
             {
-                // The UID is resolved on every access, so a PLOCAL pointing at a
-                // deleted object reads back as "0" instead of dangling.
+                // The UID is resolved on every access, so a PLOCAL pointing at
+                // a vanished object simply stops resolving here and the read
+                // falls through to the stored value, rather than following a
+                // dangling pointer the way a stored CObjBase* would.
                 CObjBase * pObj = CUID::ObjFindFromUID( (dword)pVarDef->GetValNum() );
                 if ( pObj )
                 {
