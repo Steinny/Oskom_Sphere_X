@@ -1774,6 +1774,7 @@ enum SK_TYPE : int
 	SK_FORITEM,
 	SK_FOROBJ,
 	SK_FORPLAYERS,		// not necessary to be online
+	SK_FORTAGS,			// loop over this object's TAGs, optionally filtered by a mask
 	SK_FORTIMERF,
 	SK_IF,
 	SK_RETURN,
@@ -1811,6 +1812,7 @@ lpctstr const CScriptObj::sm_szScriptKeys[SK_QTY+1] =
 	"FORITEMS",
 	"FOROBJS",
 	"FORPLAYERS",
+	"FORTAGS",
 	"FORTIMERF",
 	"IF",
 	"RETURN",
@@ -2150,6 +2152,66 @@ TRIGRET_TYPE CScriptObj::OnTriggerLoopGeneric(CScript& s, int iType, CScriptTrig
 		}
 	}
 
+	if (iType & 0x200)	// FORTAGS
+	{
+		CObjBase* pObjThis = dynamic_cast<CObjBase*>(this);
+		if (pObjThis)
+		{
+			// The mask is optional; no mask at all means every tag, same as "*".
+			// It has to be copied out: s.GetArgStr() points into the script's
+			// own line buffer, which gets overwritten as soon as the loop body
+			// reads the next line.
+			TemporaryString tsMask;
+			Str_CopyLimitNull(tsMask.buffer(), s.GetArgStr(), tsMask.capacity());
+			lpctstr ptcMask = tsMask.buffer();
+			const bool fMasked = (*ptcMask != '\0');
+
+			// Take the names before running anything. The body is free to add or
+			// delete tags on the very object being walked, which would invalidate
+			// a live iterator into m_TagDefs. 0.55 indexed its array directly and
+			// read off the end when a script did that.
+			std::vector<CSString> vsNames;
+			vsNames.reserve(pObjThis->m_TagDefs.GetCount());
+			for (const CVarDefCont* pVar : pObjThis->m_TagDefs)
+				vsNames.emplace_back(pVar->GetKey());
+
+			for (const CSString& sName : vsNames)
+			{
+				if (fMasked && (Str_Match(ptcMask, sName.GetBuffer()) != MATCH_VALID))
+					continue;
+
+				// Look the tag up again each time round: an earlier iteration may
+				// have deleted it.
+				const CVarDefCont* pVar = pObjThis->m_TagDefs.GetKey(sName.GetBuffer());
+				if (pVar == nullptr)
+					continue;
+
+				++LoopsMade;
+				if (g_Cfg.m_iMaxLoopTimes && (LoopsMade >= g_Cfg.m_iMaxLoopTimes))
+					goto toomanyloops;
+
+				// fDeleteZero stays false: a tag holding "0" must still leave
+				// _var_value readable as 0 rather than removing the local.
+				pScriptArgs->m_VarsLocal.SetStr("_var_name", false, sName.GetBuffer(), false);
+				pScriptArgs->m_VarsLocal.SetStr("_var_value", false, pVar->GetValStr(), false);
+
+				TRIGRET_TYPE iRet = OnTriggerRun(s, TRIGRUN_SECTION_TRUE, pScriptArgs, pSrc, pResult);
+				if (iRet == TRIGRET_BREAK)
+				{
+					EndContext = StartContext;
+					break;
+				}
+				if ((iRet != TRIGRET_ENDIF) && (iRet != TRIGRET_CONTINUE))
+					return iRet;
+				if (iRet == TRIGRET_CONTINUE)
+					EndContext = StartContext;
+				else
+					EndContext = s.GetContext();
+				s.SeekContext(StartContext);
+			}
+		}
+	}
+
 	if (g_Cfg.m_iMaxLoopTimes)
 	{
 	toomanyloops:
@@ -2435,6 +2497,7 @@ jump_in:
 				case SK_FORITEM:
 				case SK_FOROBJ:
 				case SK_FORPLAYERS:
+				case SK_FORTAGS:
 				case SK_FORTIMERF:
 				case SK_DORAND:
 				case SK_DOSWITCH:
@@ -2468,6 +2531,7 @@ jump_in:
             case SK_FOR:		EXC_SET_BLOCK("for");			iRet = OnTriggerLoopGeneric(s, 4,    pScriptArgs, pSrc, pResult);	break;
             case SK_WHILE:		EXC_SET_BLOCK("while");		    iRet = OnTriggerLoopGeneric(s, 8,    pScriptArgs, pSrc, pResult);	break;
             case SK_FORINSTANCE:EXC_SET_BLOCK("forinstance");	iRet = OnTriggerLoopGeneric(s, 0x40, pScriptArgs, pSrc, pResult);	break;
+            case SK_FORTAGS:	EXC_SET_BLOCK("fortags");	    iRet = OnTriggerLoopGeneric(s, 0x200,pScriptArgs, pSrc, pResult);	break;
             case SK_FORTIMERF:	EXC_SET_BLOCK("fortimerf");	    iRet = OnTriggerLoopGeneric(s, 0x100,pScriptArgs, pSrc, pResult);	break;
 
 			case SK_FORCHARLAYER:
@@ -2538,6 +2602,7 @@ jump_in:
 			case SK_FOROBJ:
 			case SK_FORPLAYERS:
 			case SK_FORINSTANCE:
+			case SK_FORTAGS:
 			case SK_FORTIMERF:
 			case SK_FOR:
 			case SK_WHILE:
