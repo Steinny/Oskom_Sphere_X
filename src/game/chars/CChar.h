@@ -634,6 +634,7 @@ public:
 	virtual bool r_Load( CScript & s ) override;  // Load a character from Script
 	virtual bool r_WriteVal( lpctstr ptcKey, CSString & s, CTextConsole * pSrc = nullptr, bool fNoCallParent = false, bool fNoCallChildren = false ) override;
 	virtual void r_Write( CScript & s ) override;
+	virtual TRIGRET_TYPE OnSaveTrigger( bool fStart ) override;
 
 	void r_WriteParity( CScript & s );
 

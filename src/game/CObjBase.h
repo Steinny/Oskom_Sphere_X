@@ -716,6 +716,13 @@ public:
 
 	void r_WriteSafe( CScript & s );
 
+protected:
+	// Fire @SaveStart (fStart) or @SaveEnd on this object while it is being written
+	// to the save file. CItem and CChar own the trigger ids, so they implement it;
+	// for anything else there is no such trigger and this does nothing.
+	virtual TRIGRET_TYPE OnSaveTrigger( bool fStart );
+public:
+
 	virtual bool r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef ) override;
 	virtual void r_Write( CScript & s );
 	virtual bool r_LoadVal( CScript & s ) override;

@@ -508,6 +508,12 @@ bool CObjBase::MoveNearObj( const CObjBaseTemplate *pObj, ushort iSteps )
 	return MoveNear(pObj->GetTopPoint(), iSteps);
 }
 
+TRIGRET_TYPE CObjBase::OnSaveTrigger( bool fStart )
+{
+	UnreferencedParameter(fStart);
+	return TRIGRET_RET_DEFAULT;
+}
+
 void CObjBase::r_WriteSafe( CScript & s )
 {
 	ADDTOCALLSTACK("CObjBase::r_WriteSafe");
@@ -527,7 +533,25 @@ void CObjBase::r_WriteSafe( CScript & s )
 			if ( g_World.FixObj(this) )
 				return;
 		}
+		// Off by default: this runs once per object saved, so a big shard pays for
+		// it on every world save. OF_SaveTriggers in sphere.ini turns it on, and a
+		// save started with the forcing flag turns it on for that save alone.
+		const bool fSaveTriggers = g_World.AreSaveTriggersEnabled();
+		if ( fSaveTriggers )
+		{
+			// "return 1" keeps this object out of the save file. Decided here,
+			// before r_Write, rather than inside it: a container writes its own
+			// section and its contents from two different frames, so refusing any
+			// deeper would drop the container and still write everything inside it
+			// pointing at a CONT that was never saved.
+			if ( OnSaveTrigger(true) == TRIGRET_RET_TRUE )
+				return;
+		}
+
 		r_Write(s);
+
+		if ( fSaveTriggers )
+			OnSaveTrigger(false);
 	}
 	catch ( const CSError& e )
 	{

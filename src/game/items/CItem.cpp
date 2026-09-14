@@ -2445,23 +2445,18 @@ void CItem::r_WriteMore2( CSString & sVal )
     }
 }
 
+TRIGRET_TYPE CItem::OnSaveTrigger( bool fStart )
+{
+	return OnTrigger(fStart ? ITRIG_SaveStart : ITRIG_SaveEnd,
+		CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv);
+}
+
 void CItem::r_Write( CScript & s )
 {
 	ADDTOCALLSTACK_DEBUG("CItem::r_Write");
 	const CItemBase *pItemDef = Item_GetDef();
 	if ( !pItemDef )
 		return;
-
-	// Off by default: this runs once per object saved, so a big shard pays for it
-	// on every world save. OF_SaveTriggers in sphere.ini turns it on, and a save
-	// started with the forcing flag turns it on for that save alone.
-	const bool fSaveTriggers = g_World.AreSaveTriggersEnabled();
-	if ( fSaveTriggers )
-	{
-		// "return 1" keeps this object out of the save file altogether.
-		if ( OnTrigger(ITRIG_SaveStart, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv) == TRIGRET_RET_TRUE )
-			return;
-	}
 
 	s.WriteSection("WORLDITEM %s", GetResourceName());
 
@@ -2528,9 +2523,6 @@ void CItem::r_Write( CScript & s )
 
     CEntity::r_Write(s);
     CEntityProps::r_Write(s);
-
-	if ( fSaveTriggers )
-		OnTrigger(ITRIG_SaveEnd, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv);
 }
 
 bool CItem::LoadSetContainer(const CUID& uidCont, LAYER_TYPE layer )
