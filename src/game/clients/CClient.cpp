@@ -1513,7 +1513,11 @@ bool CClient::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command from
 			addReSync();
 			break;
 		case CV_SAVE:
-			g_World.Save(s.GetArgVal() != 0);
+			{
+				// Same bit field as SERV.SAVE: 1 = immediate, 2 = force save triggers.
+				const int64 iFlags = s.GetArgVal();
+				g_World.Save((iFlags & 0x1) != 0, (iFlags & 0x2) != 0);
+			}
 			break;
 		case CV_SCROLL:
 			// put a scroll up.

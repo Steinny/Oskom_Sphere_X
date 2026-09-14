@@ -2199,8 +2199,14 @@ log_cont:
 				m_fResyncRequested = pSrc;
 				break;
 			}
-		case SV_SAVE: // "SAVE" x
-			g_World.Save(s.GetArgVal() != 0);
+		case SV_SAVE: // "SAVE" flags
+			{
+				// Bit field, so the old "SAVE 1" keeps meaning what it did:
+				//   1 = save immediately instead of in background stages
+				//   2 = run @SaveStart/@SaveEnd even if OF_SaveTriggers is off
+				const int64 iFlags = s.GetArgVal();
+				g_World.Save((iFlags & 0x1) != 0, (iFlags & 0x2) != 0);
+			}
 			break;
 		case SV_SAVESTATICS:
 			g_World.SaveStatics();

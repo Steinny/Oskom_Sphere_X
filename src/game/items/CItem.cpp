@@ -86,6 +86,8 @@ lpctstr const CItem::sm_szTrigName[ITRIG_QTY+1] =	// static
     "@RegionLeave",
     "@ResourceGather",
     "@ResourceTest",
+    "@SaveEnd",         // I have just been written to the save file.
+    "@SaveStart",       // I am about to be saved. "return 1" leaves me out of the save.
 	"@SELL",
 	"@Ship_Move",
 	"@Ship_Stop",
@@ -2450,6 +2452,17 @@ void CItem::r_Write( CScript & s )
 	if ( !pItemDef )
 		return;
 
+	// Off by default: this runs once per object saved, so a big shard pays for it
+	// on every world save. OF_SaveTriggers in sphere.ini turns it on, and a save
+	// started with the forcing flag turns it on for that save alone.
+	const bool fSaveTriggers = g_World.AreSaveTriggersEnabled();
+	if ( fSaveTriggers )
+	{
+		// "return 1" keeps this object out of the save file altogether.
+		if ( OnTrigger(ITRIG_SaveStart, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv) == TRIGRET_RET_TRUE )
+			return;
+	}
+
 	s.WriteSection("WORLDITEM %s", GetResourceName());
 
 	CObjBase::r_Write(s);
@@ -2515,6 +2528,9 @@ void CItem::r_Write( CScript & s )
 
     CEntity::r_Write(s);
     CEntityProps::r_Write(s);
+
+	if ( fSaveTriggers )
+		OnTrigger(ITRIG_SaveEnd, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv);
 }
 
 bool CItem::LoadSetContainer(const CUID& uidCont, LAYER_TYPE layer )

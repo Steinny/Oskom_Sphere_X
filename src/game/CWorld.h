@@ -163,6 +163,7 @@ private:
 
 	int		_iSaveStage;	// Current stage of the background save.
 	llong	_iSaveTimer;	// Time it takes to save
+	bool	_fSaveTriggersForced;	// this save runs @SaveStart/@SaveEnd even if OF_SaveTriggers is off
 
 public:
 	int64 _iTimeStartup;		// When did the system restore load/save ?
@@ -193,6 +194,14 @@ private:
 	static void GetBackupName(CSString& sArchive, lpctstr ptcBaseDir, tchar tcType, int iSaveCount);
 
 	bool SaveTry(bool fForceImmediate); // Save world state
+
+public:
+	// Should objects fire @SaveStart / @SaveEnd while being written out?
+	// True when sphere.ini asks for it, or when this particular save was started
+	// with the flag that forces them on regardless.
+	bool AreSaveTriggersEnabled() const noexcept;
+
+private:
 	bool SaveStage();
 	bool SaveForce(); // Save world state
 
@@ -225,7 +234,9 @@ public:
 
 	static bool OpenScriptBackup(CScript& s, lpctstr pszBaseDir, lpctstr pszBaseName, int savecount);
     bool CheckAvailableSpaceForSave(bool fStatics);
-	bool Save( bool fForceImmediate ); // Save world state
+	// fForceTriggers: run @SaveStart/@SaveEnd on every object even when
+	// OF_SaveTriggers is off in sphere.ini. Applies to this save only.
+	bool Save( bool fForceImmediate, bool fForceTriggers = false ); // Save world state
 	void SaveStatics();
 	bool LoadAll();
 	bool DumpAreas( CTextConsole * pSrc, lpctstr pszFilename );

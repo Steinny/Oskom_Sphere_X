@@ -184,6 +184,8 @@ lpctstr const CChar::sm_szTrigName[CTRIG_QTY+1] =	// static
 	"@Rename",
 	"@Resurrect",
     "@Reveal",              // Character is revealing.
+    "@SaveEnd",             // I have just been written to the save file.
+    "@SaveStart",           // I am about to be saved. "return 1" leaves me out of the save.
 	"@SeeCrime",			// I saw a crime
 	"@SeeHidden",			// Can I see hidden chars?
 	"@SeeSnoop",
@@ -4111,6 +4113,15 @@ void CChar::r_Write( CScript & s )
 	ADDTOCALLSTACK("CChar::r_Write");
 	EXC_TRY("r_Write");
 
+	// See CItem::r_Write: off unless sphere.ini asks for it or this save forces it.
+	const bool fSaveTriggers = g_World.AreSaveTriggersEnabled();
+	if ( fSaveTriggers )
+	{
+		// "return 1" keeps this character out of the save file altogether.
+		if ( OnTrigger(CTRIG_SaveStart, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv) == TRIGRET_RET_TRUE )
+			return;
+	}
+
 	s.WriteSection("WORLDCHAR %s", GetResourceName());
 	s.WriteKeyVal("CREATE", CWorldGameTime::GetCurrentTime().GetTimeDiff(_iTimeCreate) / MSECS_PER_TENTH );
 
@@ -4323,6 +4334,10 @@ void CChar::r_Write( CScript & s )
     CEntityProps::r_Write(s);
 
 	r_WriteContent(s);
+
+	if ( fSaveTriggers )
+		OnTrigger(CTRIG_SaveEnd, CScriptParserBufs::GetCScriptTriggerArgsPtr(), &g_Serv);
+
 	EXC_CATCH;
 }
 

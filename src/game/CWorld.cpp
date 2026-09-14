@@ -684,6 +684,7 @@ CWorld::CWorld() :
 	m_iSaveCountID = 0;
 	_iSaveStage = 0;
 	_iSaveTimer = 0;
+	_fSaveTriggersForced = false;
 	m_iPrevBuild = 0;
 	m_iLoadVersion = 0;
 	_fSaveNotificationSent = false;
@@ -1164,9 +1165,17 @@ bool CWorld::CheckAvailableSpaceForSave(bool fStatics)
     return true;
 }
 
-bool CWorld::Save( bool fForceImmediate ) // Save world state
+bool CWorld::AreSaveTriggersEnabled() const noexcept
+{
+	return _fSaveTriggersForced || IsSetOF(OF_SaveTriggers);
+}
+
+bool CWorld::Save( bool fForceImmediate, bool fForceTriggers ) // Save world state
 {
 	ADDTOCALLSTACK("CWorld::Save");
+
+	// Only for the duration of this save: objects consult it while being written.
+	_fSaveTriggersForced = fForceTriggers;
 
 	bool fSaved = false;
     CScriptTriggerArgsPtr pScriptArgs = std::make_shared<CScriptTriggerArgs>();

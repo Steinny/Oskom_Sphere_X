@@ -1027,6 +1027,8 @@ enum ITRIG_TYPE
     ITRIG_RegionLeave,          // Ship leaving the region.
     ITRIG_ResourceGather,
     ITRIG_ResourceTest,
+    ITRIG_SaveEnd,              // I have just been written to the save file.
+    ITRIG_SaveStart,            // I am about to be written to the save file. Return 1 to leave me out of it.
 	ITRIG_Sell,                 // I'm being sold.
 	ITRIG_Ship_Move,            // I'm a ship and i'm move around.
     ITRIG_Ship_Stop,            // I'm a ship and i'm stop around.
@@ -1198,6 +1200,8 @@ enum CTRIG_TYPE : short
 	CTRIG_Rename,       // Changing my name or pets one.
 	CTRIG_Resurrect,    // I'm going to resurrect via function or spell.
     CTRIG_Reveal,       // Character is revealing.
+    CTRIG_SaveEnd,      // I have just been written to the save file.
+    CTRIG_SaveStart,    // I am about to be written to the save file. Return 1 to leave me out of it.
 	CTRIG_SeeCrime,     // I am seeing a crime.
 	CTRIG_SeeHidden,    // I'm about to see a hidden char.
 	CTRIG_SeeSnoop,     // I see someone Snooping something.
