@@ -174,11 +174,6 @@ public:
 
 	void DumpKeys( CTextConsole * pSrc, lpctstr pszPrefix = nullptr ) const;
 	void ClearKeys(lpctstr mask = nullptr);
-
-	// Like ClearKeys, but the argument is a wildcard pattern matched against the
-	// whole key (Str_Match) rather than a substring searched for inside it.
-	// This is what 0.55's CVarDefArray::ClearVars did.
-	void ClearKeysMatching(lpctstr ptcMask);
 	void DeleteKey( lpctstr key );
 
 	//bool r_LoadVal( CScript & s );

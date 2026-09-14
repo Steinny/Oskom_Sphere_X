@@ -2180,9 +2180,7 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
 	{
 		ptcKey = s.GetArgStr();
 		SKIP_SEPARATORS(ptcKey);
-		// Wildcard, not substring: 0.55's CLEARPTAGS matched with Str_Match and
-		// the scripts rely on it (CLEARPTAGS temp_*, item_*, *<SRC.UID>).
-		m_PTagDefs.ClearKeysMatching(ptcKey);
+		m_PTagDefs.ClearKeys(ptcKey);
 		return true;
 	}
 
