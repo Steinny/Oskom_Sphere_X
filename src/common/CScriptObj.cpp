@@ -65,6 +65,43 @@ static lpctstr const _ptcSRefKeys[SREF_QTY+1] =
 };
 
 
+lpctstr CScriptObj::ParseNamedRefName(lpctstr ptcKey, tchar * ptcNameOut) noexcept // static
+{
+	lpctstr ptcEnd = ptcKey;
+	while ( *ptcEnd && (*ptcEnd != '.') && (*ptcEnd != '=') && !IsSpace(*ptcEnd) )
+		++ptcEnd;
+
+	const size_t uiLen = (size_t)(ptcEnd - ptcKey);
+	if ( (uiLen == 0) || (uiLen >= kuiNamedRefNameMaxLen) )
+		return nullptr;
+
+	memcpy(ptcNameOut, ptcKey, uiLen);
+	ptcNameOut[uiLen] = '\0';
+	return ptcEnd;
+}
+
+CObjBase * CScriptObj::ResolveNamedUidRef(const CVarDefMap & varMap, lpctstr & ptcKey) noexcept // static
+{
+	tchar ptcName[kuiNamedRefNameMaxLen];
+	lpctstr ptcEnd = ParseNamedRefName(ptcKey, ptcName);
+
+	// Only a dereference ("<name>.<key>") names an object. A bare "<name>" is the
+	// stored UID itself, which the caller reads back as a plain value.
+	if ( (ptcEnd == nullptr) || (*ptcEnd != '.') )
+		return nullptr;
+
+	const CVarDefCont * pVarDef = varMap.GetKey(ptcName);
+	if ( pVarDef == nullptr )
+		return nullptr;
+
+	CObjBase * pObj = CUID::ObjFindFromUID( (dword)pVarDef->GetValNum() );
+	if ( pObj == nullptr )
+		return nullptr;
+
+	ptcKey = ptcEnd + 1;
+	return pObj;
+}
+
 bool CScriptObj::ParseError_UndefinedKeyword(lpctstr ptcKey) // static
 {
 	g_Log.EventError("Undefined keyword '%s'.\n", ptcKey);
@@ -1774,6 +1811,7 @@ enum SK_TYPE : int
 	SK_FORITEM,
 	SK_FOROBJ,
 	SK_FORPLAYERS,		// not necessary to be online
+	SK_FORPTAGS,		// same as FORTAGS, over the object's PTAGs
 	SK_FORTAGS,			// loop over this object's TAGs, optionally filtered by a mask
 	SK_FORTIMERF,
 	SK_IF,
@@ -1812,6 +1850,7 @@ lpctstr const CScriptObj::sm_szScriptKeys[SK_QTY+1] =
 	"FORITEMS",
 	"FOROBJS",
 	"FORPLAYERS",
+	"FORPTAGS",
 	"FORTAGS",
 	"FORTIMERF",
 	"IF",
@@ -2152,11 +2191,12 @@ TRIGRET_TYPE CScriptObj::OnTriggerLoopGeneric(CScript& s, int iType, CScriptTrig
 		}
 	}
 
-	if (iType & 0x200)	// FORTAGS
+	if (iType & 0x600)	// FORTAGS / FORPTAGS
 	{
 		CObjBase* pObjThis = dynamic_cast<CObjBase*>(this);
 		if (pObjThis)
 		{
+			const CVarDefMap& varMap = (iType & 0x400) ? pObjThis->m_PTagDefs : pObjThis->m_TagDefs;
 			// The mask is optional; no mask at all means every tag, same as "*".
 			// It has to be copied out: s.GetArgStr() points into the script's
 			// own line buffer, which gets overwritten as soon as the loop body
@@ -2171,8 +2211,8 @@ TRIGRET_TYPE CScriptObj::OnTriggerLoopGeneric(CScript& s, int iType, CScriptTrig
 			// a live iterator into m_TagDefs. 0.55 indexed its array directly and
 			// read off the end when a script did that.
 			std::vector<CSString> vsNames;
-			vsNames.reserve(pObjThis->m_TagDefs.GetCount());
-			for (const CVarDefCont* pVar : pObjThis->m_TagDefs)
+			vsNames.reserve(varMap.GetCount());
+			for (const CVarDefCont* pVar : varMap)
 				vsNames.emplace_back(pVar->GetKey());
 
 			for (const CSString& sName : vsNames)
@@ -2182,7 +2222,7 @@ TRIGRET_TYPE CScriptObj::OnTriggerLoopGeneric(CScript& s, int iType, CScriptTrig
 
 				// Look the tag up again each time round: an earlier iteration may
 				// have deleted it.
-				const CVarDefCont* pVar = pObjThis->m_TagDefs.GetKey(sName.GetBuffer());
+				const CVarDefCont* pVar = varMap.GetKey(sName.GetBuffer());
 				if (pVar == nullptr)
 					continue;
 
@@ -2497,6 +2537,7 @@ jump_in:
 				case SK_FORITEM:
 				case SK_FOROBJ:
 				case SK_FORPLAYERS:
+				case SK_FORPTAGS:
 				case SK_FORTAGS:
 				case SK_FORTIMERF:
 				case SK_DORAND:
@@ -2531,6 +2572,7 @@ jump_in:
             case SK_FOR:		EXC_SET_BLOCK("for");			iRet = OnTriggerLoopGeneric(s, 4,    pScriptArgs, pSrc, pResult);	break;
             case SK_WHILE:		EXC_SET_BLOCK("while");		    iRet = OnTriggerLoopGeneric(s, 8,    pScriptArgs, pSrc, pResult);	break;
             case SK_FORINSTANCE:EXC_SET_BLOCK("forinstance");	iRet = OnTriggerLoopGeneric(s, 0x40, pScriptArgs, pSrc, pResult);	break;
+            case SK_FORPTAGS:	EXC_SET_BLOCK("forptags");	    iRet = OnTriggerLoopGeneric(s, 0x400,pScriptArgs, pSrc, pResult);	break;
             case SK_FORTAGS:	EXC_SET_BLOCK("fortags");	    iRet = OnTriggerLoopGeneric(s, 0x200,pScriptArgs, pSrc, pResult);	break;
             case SK_FORTIMERF:	EXC_SET_BLOCK("fortimerf");	    iRet = OnTriggerLoopGeneric(s, 0x100,pScriptArgs, pSrc, pResult);	break;
 
@@ -2602,6 +2644,7 @@ jump_in:
 			case SK_FOROBJ:
 			case SK_FORPLAYERS:
 			case SK_FORINSTANCE:
+			case SK_FORPTAGS:
 			case SK_FORTAGS:
 			case SK_FORTIMERF:
 			case SK_FOR:

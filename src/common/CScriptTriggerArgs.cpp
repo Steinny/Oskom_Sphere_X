@@ -161,29 +161,6 @@ void CScriptTriggerArgs::GetArgNs(int64* iVar1, int64* iVar2, int64* iVar3) //Pu
         *iVar3 = m_iN3;
 }
 
-// Longest accepted PLOCAL variable name. Names are written by hand in scripts,
-// so this is generous; an overlong one simply isn't treated as a reference.
-static constexpr size_t kuiPLocalNameMaxLen = 256;
-
-// Extract the <name> part of a "PLOCAL.<name>[.<key>]" key, which the caller has
-// already advanced past the "PLOCAL." prefix.
-// Returns the character that terminated the name ('.' when a member is being
-// accessed), or nullptr if the name is empty or too long to be one.
-static lpctstr PLocal_ParseName( lpctstr ptcKey, tchar * ptcNameOut ) noexcept
-{
-    lpctstr ptcEnd = ptcKey;
-    while ( *ptcEnd && (*ptcEnd != '.') && (*ptcEnd != '=') && !IsSpace(*ptcEnd) )
-        ++ptcEnd;
-
-    const size_t uiLen = (size_t)(ptcEnd - ptcKey);
-    if ( (uiLen == 0) || (uiLen >= kuiPLocalNameMaxLen) )
-        return nullptr;
-
-    memcpy(ptcNameOut, ptcKey, uiLen);
-    ptcNameOut[uiLen] = '\0';
-    return ptcEnd;
-}
-
 bool CScriptTriggerArgs::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 {
     ADDTOCALLSTACK("CScriptTriggerArgs::r_GetRef");
@@ -222,28 +199,12 @@ bool CScriptTriggerArgs::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
     }
     else if ( !strnicmp(ptcKey, "PLOCAL.", 7) )     // PLOCAL.NAME.KEY
     {
-        tchar ptcName[kuiPLocalNameMaxLen];
-        lpctstr ptcEnd = PLocal_ParseName(ptcKey + 7, ptcName);
-
-        // Only a dereference (PLOCAL.NAME.KEY) yields a reference. A bare
-        // PLOCAL.NAME is the stored UID itself, handled by r_WriteVal.
-        if ( ptcEnd && (*ptcEnd == '.') )
+        lpctstr ptcRest = ptcKey + 7;
+        if ( CObjBase * pObj = ResolveNamedUidRef(m_VarsPLocal, ptcRest) )
         {
-            const CVarDefCont * pVarDef = m_VarsPLocal.GetKey( ptcName );
-            if ( pVarDef )
-            {
-                // The UID is resolved on every access, so a PLOCAL pointing at
-                // a vanished object simply stops resolving here and the read
-                // falls through to the stored value, rather than following a
-                // dangling pointer the way a stored CObjBase* would.
-                CObjBase * pObj = CUID::ObjFindFromUID( (dword)pVarDef->GetValNum() );
-                if ( pObj )
-                {
-                    ptcKey = ptcEnd + 1;
-                    pRef = pObj;
-                    return true;
-                }
-            }
+            ptcKey = ptcRest;
+            pRef = pObj;
+            return true;
         }
     }
     return false;
@@ -303,8 +264,8 @@ bool CScriptTriggerArgs::r_Verb( CScript & s, CTextConsole * pSrc )
     }
     else if ( !strnicmp( "PLOCAL.", ptcKey, 7 ) )
     {
-        tchar ptcName[kuiPLocalNameMaxLen];
-        lpctstr ptcEnd = PLocal_ParseName(ptcKey + 7, ptcName);
+        tchar ptcName[kuiNamedRefNameMaxLen];
+        lpctstr ptcEnd = ParseNamedRefName(ptcKey + 7, ptcName);
         if ( ptcEnd )
         {
             if ( !*ptcEnd || (*ptcEnd == '=') )     // setting PLOCAL.NAME to an object

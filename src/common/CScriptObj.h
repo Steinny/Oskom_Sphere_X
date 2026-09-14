@@ -14,6 +14,8 @@ class CSFileText;
 class CSString;
 class CUID;
 class CChar;
+class CObjBase;
+class CVarDefMap;
 
 class CScriptTriggerArgs;
 using CScriptTriggerArgsPtr = std::shared_ptr<CScriptTriggerArgs>;
@@ -140,6 +142,24 @@ private:
 // Utilities
 protected:
 	static bool ParseError_UndefinedKeyword(lpctstr ptcKey);
+
+	// Longest name accepted in a "<PREFIX>.<name>[.<key>]" reference, the shape
+	// shared by PLOCAL and PTAG. Names are written by hand in scripts, so this is
+	// generous; an overlong one simply isn't treated as a reference.
+	static constexpr size_t kuiNamedRefNameMaxLen = 256;
+
+	// Split the "<name>[.<key>]" that follows such a prefix, which the caller has
+	// already stepped past. Copies <name> into ptcNameOut (at least
+	// kuiNamedRefNameMaxLen bytes) and returns the character that ended it -- '.'
+	// when a member access follows -- or nullptr if the name is empty or too long.
+	static lpctstr ParseNamedRefName(lpctstr ptcKey, tchar * ptcNameOut) noexcept;
+
+	// Resolve "<name>.<key>" against a map holding UIDs. On success, advances
+	// ptcKey past "<name>." and returns the object named. Returns nullptr, leaving
+	// ptcKey alone, when there is no member access, no such name, or the UID no
+	// longer names a live object -- the UID is resolved on every access, so a
+	// reference to a deleted object goes quiet instead of dangling.
+	static CObjBase * ResolveNamedUidRef(const CVarDefMap & varMap, lpctstr & ptcKey) noexcept;
 
 
 // Constructors/operators

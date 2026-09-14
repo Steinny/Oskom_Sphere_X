@@ -73,6 +73,7 @@ public:
     uchar _uiInternalStateFlags;
 
     CVarDefMap m_TagDefs;		// attach extra tags here.
+    CVarDefMap m_PTagDefs;		// PTAG.x = named object reference, stored as its UID
     CVarDefMap m_BaseDefs;		// New Variable storage system
     CResourceRefArray m_OEvents;
     std::vector<std::unique_ptr<CClientTooltip>> m_TooltipData; // Storage for tooltip data while in trigger

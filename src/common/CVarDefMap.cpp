@@ -626,6 +626,27 @@ void CVarDefMap::DumpKeys( CTextConsole * pSrc, lpctstr pszPrefix ) const
 	}
 }
 
+void CVarDefMap::ClearKeysMatching(lpctstr ptcMask)
+{
+	ADDTOCALLSTACK("CVarDefMap::ClearKeysMatching");
+	if ( (ptcMask == nullptr) || (*ptcMask == '\0') )
+	{
+		Clear();
+		return;
+	}
+
+	// Collect first, delete after: DeleteAtKey reorders the container.
+	std::vector<CSString> vsDoomed;
+	for ( const CVarDefCont * pVar : m_Container )
+	{
+		if ( pVar && (Str_Match(ptcMask, pVar->GetKey()) == MATCH_VALID) )
+			vsDoomed.emplace_back(pVar->GetKey());
+	}
+
+	for ( const CSString & sKey : vsDoomed )
+		DeleteKey(sKey.GetBuffer());
+}
+
 void CVarDefMap::ClearKeys(lpctstr mask)
 {
 	ADDTOCALLSTACK("CVarDefMap::ClearKeys");

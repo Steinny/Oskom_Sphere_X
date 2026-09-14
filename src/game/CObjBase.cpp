@@ -914,6 +914,18 @@ lpctstr const CObjBase::sm_szRefKeys[OBR_QTY+1] =
 bool CObjBase::r_GetRef( lpctstr & ptcKey, CScriptObj * & pRef )
 {
 	ADDTOCALLSTACK("CObjBase::r_GetRef");
+
+	if ( !strnicmp( ptcKey, "PTAG.", 5 ) )		// PTAG.NAME.KEY
+	{
+		lpctstr ptcRest = ptcKey + 5;
+		if ( CObjBase * pObj = ResolveNamedUidRef(m_PTagDefs, ptcRest) )
+		{
+			ptcKey = ptcRest;
+			pRef = pObj;
+			return true;
+		}
+	}
+
 	int i = FindTableHeadSorted( ptcKey, sm_szRefKeys, ARRAY_COUNT(sm_szRefKeys)-1 );
 	if ( i >= 0 )
 	{
@@ -1572,6 +1584,28 @@ bool CObjBase::r_WriteVal( lpctstr ptcKey, CSString &sVal, CTextConsole * pSrc, 
                     sVal = m_TagDefs.GetKeyStr(ptcKey, fZero);
 			}
             break;
+		case OC_PTAG:			// "PTAG" = a named reference to another object.
+			{
+				if ( ptcKey[4] != '.' )
+					return false;
+
+				CScriptObj * pRef;
+				if ( r_GetRef( ptcKey, pRef ) )
+				{
+					if ( pRef == nullptr )
+					{
+						sVal = "0";		// bad refs always read back as "0"
+						return true;
+					}
+					return pRef->r_WriteVal( ptcKey, sVal, pSrc );
+				}
+
+				// Not a live dereference: hand back what is stored, which for a
+				// bare PTAG.NAME is the UID. An unset name reads back empty.
+				ptcKey += 5;
+				sVal = m_PTagDefs.GetKeyStr( ptcKey );
+			}
+			break;
 		case OC_TIMER:
 			sVal.FormatLLVal(_GetTimerSAdjusted() );
 			break;
@@ -1801,6 +1835,22 @@ bool CObjBase::r_LoadVal( CScript & s )
             m_TagDefs.SetStr(ptcKey, fQuoted, ptcArg, fZero);
             return true;
         }
+    }
+    else if (!strnicmp("PTAG.", ptcKey, 5))
+    {
+        // Only a plain "PTAG.NAME" binds a name here. "PTAG.NAME.KEY=..." is an
+        // assignment through the reference and is handled by r_Verb via
+        // r_GetRef; it only lands here when the reference is dead, and 0.55
+        // would then quietly create a tag literally called "NAME.KEY".
+        tchar ptcName[kuiNamedRefNameMaxLen];
+        lpctstr ptcEnd = ParseNamedRefName(ptcKey + 5, ptcName);
+        if ((ptcEnd == nullptr) || (*ptcEnd == '.'))
+            return false;
+
+        // Stored as a plain UID, not as a pointer, so it survives a save and
+        // cannot outlive the object it names.
+        m_PTagDefs.SetNum(ptcName, s.GetArgVal());
+        return true;
     }
 
 	int index = FindTableSorted( ptcKey, sm_szLoadKeys, ARRAY_COUNT( sm_szLoadKeys )-1 );
@@ -2098,6 +2148,7 @@ void CObjBase::r_Write( CScript & s )
 	m_BaseDefs.r_WritePrefix(s);
 
 	m_TagDefs.r_WritePrefix(s, "TAG");
+	m_PTagDefs.r_WritePrefix(s, "PTAG");
 	m_OEvents.r_Write(s, "EVENTS");
 }
 
@@ -2124,6 +2175,16 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
 	ASSERT(pSrc);
 
 	EXC_TRY("Verb-Special");
+
+	if ( !strnicmp(ptcKey, "CLEARPTAGS", 10) )
+	{
+		ptcKey = s.GetArgStr();
+		SKIP_SEPARATORS(ptcKey);
+		// Wildcard, not substring: 0.55's CLEARPTAGS matched with Str_Match and
+		// the scripts rely on it (CLEARPTAGS temp_*, item_*, *<SRC.UID>).
+		m_PTagDefs.ClearKeysMatching(ptcKey);
+		return true;
+	}
 
 	if ( !strnicmp(ptcKey, "CLEARTAGS", 9) )
 	{
@@ -2632,6 +2693,13 @@ bool CObjBase::r_Verb( CScript & s, CTextConsole * pSrc ) // Execute command fro
             if (! strcmpi(s.GetArgStr(), "log"))
                 pSrc = &g_Serv;
             m_TagDefs.DumpKeys(pSrc, "TAG.");
+        }break;
+        case OV_PTAGLIST:
+        {
+            EXC_SET_BLOCK("PTAGLIST");
+            if (! strcmpi(s.GetArgStr(), "log"))
+                pSrc = &g_Serv;
+            m_PTagDefs.DumpKeys(pSrc, "PTAG.");
         }break;
         case OV_CLILOCLIST:
         {
@@ -3667,6 +3735,7 @@ void CObjBase::DupeCopy( const CObjBase * pObj )
         _SetTimeout(pObj->GetTimerAdjusted());
     }
 	m_TagDefs.Copy( &(pObj->m_TagDefs) );
+	m_PTagDefs.Copy( &(pObj->m_PTagDefs) );
 	m_BaseDefs.Copy(&(pObj->m_BaseDefs));
     CEntityProps::Copy(pObj);
 }
